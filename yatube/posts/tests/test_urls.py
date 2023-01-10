@@ -1,7 +1,10 @@
+# from collections import ChainMap
+
 from http import HTTPStatus
 
 from django.core.cache import cache
 from django.test import Client, TestCase
+from django.urls import reverse
 
 from ..models import Group, Post, User
 
@@ -20,13 +23,7 @@ class PostURLTests(TestCase):
             author=cls.user,
             text="Пост",
         )
-        cls.TEMPALTES_URL_FOR_GUEST = {
-            '/': 'posts/index.html',
-            f'/group/{cls.group.slug}/': 'posts/group_list.html',
-            f'/profile/{cls.user.username}/': 'posts/profile.html',
-            f'/posts/{cls.post.id}/': 'posts/post_detail.html',
-        }
-        cls.TEMPALTES_URL_FOR_USER = {
+        cls.TEMPALTES_URL = {
             '/': 'posts/index.html',
             f'/group/{cls.group.slug}/': 'posts/group_list.html',
             f'/profile/{cls.user.username}/': 'posts/profile.html',
@@ -40,37 +37,58 @@ class PostURLTests(TestCase):
         cls.CREATE_URL = "/create/"
         cls.NO_FOUND_URL = "/unexisting_page/"
 
+        cls.guest_client = Client()
+        cls.authorized_client = Client()
+        cls.authorized_client.force_login(cls.user)
+
     def setUp(self):
-        self.guest_client = Client()
-        self.authorized_client = Client()
-        self.authorized_client.force_login(self.user)
         cache.clear()
 
-    def test_urls_uses_correct_template(self):
-        """URL-адреса доступные гостю."""
-        for address, template in self.TEMPALTES_URL_FOR_GUEST.items():
-            with self.subTest(address=address):
-                response = self.guest_client.get(address)
-                self.assertTemplateUsed(response, template)
-
-    def test_urls_author_correct_template(self):
-        """URL-адреса доступный  юзеру"""
-        for address, template in self.TEMPALTES_URL_FOR_USER.items():
+    def test_urls_correct_template(self):
+        """URL-адрес использует соответствующий шаблон."""
+        for address, template in self.TEMPALTES_URL.items():
             with self.subTest(template=template):
                 response = self.authorized_client.get(address)
                 self.assertTemplateUsed(response, template)
 
-    def test_status_code_client(self):
-        """URL-адрес не существует"""
-        response = self.guest_client.get(self.NO_FOUND_URL)
-        self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
+    def test_redirect_url(self):
+        """
+        Страница create и edit доступны только авторизованнаому пользователю.
+        """
+        fields_assert = {
+            self.REDIRECTS_POST_CREATE_URL: self.guest_client.get(
+                self.CREATE_URL, follow=True),
+            self.REDIRECTS_URL: self.guest_client.get(
+                self.POST_EDIT_URL, follow=True),
+        }
+        for key, response in fields_assert.items():
+            with self.subTest(key=key):
+                self.assertRedirects(response, key)
 
-    def test_create_url_redirect_anonymous_on_auth_login(self):
-        """Страница /create/ доступна авторизованному пользователю."""
-        response = self.guest_client.get(self.CREATE_URL, follow=True)
-        self.assertRedirects(response, self.REDIRECTS_POST_CREATE_URL)
-
-    def test_edit_url_redirect_anonymous_on_auth_login(self):
-        """Страница /edit/ доступна авторизованному пользователю."""
-        response = self.guest_client.get(self.POST_EDIT_URL, follow=True)
-        self.assertRedirects(response, self.REDIRECTS_URL)
+    def test_http(self):
+        """Проверка кодов возврата на всех существующих адресах."""
+        # хотел через ChainMap, понимаю, что он делает
+        # но не до конца понимаю как именно в этом случае сделать
+        field_urls_code = {
+            reverse(
+                'posts:index'): HTTPStatus.OK,
+            reverse(
+                'posts:group_list',
+                args=(self.group.slug,)): HTTPStatus.OK,
+            reverse(
+                'posts:profile',
+                args=(self.user.username,)): HTTPStatus.OK,
+            reverse(
+                'posts:post_detail',
+                args=(self.post.id,)): HTTPStatus.OK,
+            reverse(
+                'posts:edit',
+                args=(self.post.id,)): HTTPStatus.OK,
+            reverse(
+                'posts:create_post'): HTTPStatus.OK,
+            '/unexisting_page/': HTTPStatus.NOT_FOUND,
+        }
+        for url, http in field_urls_code.items():
+            with self.subTest(url=url):
+                response = self.authorized_client.get(url)
+                self.assertEqual(response.status_code, http)

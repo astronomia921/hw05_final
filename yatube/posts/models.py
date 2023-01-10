@@ -1,5 +1,3 @@
-from core.models import CreatedModel
-
 from django.db import models
 from django.contrib.auth import get_user_model
 
@@ -65,17 +63,25 @@ class Post(models.Model):
         return self.text[:self.STR_TEXT_LEN]
 
 
-class Comment(CreatedModel):
+class Comment(models.Model):
     post = models.ForeignKey(
         Post,
         on_delete=models.CASCADE,
-        verbose_name='Пост')
+        verbose_name='Пост'
+    )
     author = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        verbose_name='Автор')
+        verbose_name='Автор'
+    )
     text = models.TextField(
-        verbose_name='Комментарий',)
+        verbose_name='Комментарий',
+        help_text='Напишите ваши мысли, по поводу поста (будьте вежливы)',
+    )
+    created = models.DateTimeField(
+        'Дата создания',
+        auto_now_add=True
+    )
     STR_TEXT_LEN = 15
 
     class Meta:
@@ -103,6 +109,11 @@ class Follow(models.Model):
     )
 
     class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'author'], name='unique_user_author',
+            ),
+        ]
         verbose_name_plural = 'Подписки'
         verbose_name = 'Подписка'
 

@@ -1,15 +1,16 @@
 import shutil
 import tempfile
 
-from http import HTTPStatus
-
+from django import forms
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from ..forms import CommentForm, PostForm
+from http import HTTPStatus
 
+from ..forms import CommentForm, PostForm
 from ..models import Comment, Group, Post, User
 
 TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
@@ -33,7 +34,7 @@ class PostCreateFormTests(TestCase):
             slug='test-group',
             description='Тестовое описание_2'
         )
-        cls.small_gif_1 = (
+        cls.SMALL_GIF_1 = (
             b'\x47\x49\x46\x38\x39\x61\x02\x00'
             b'\x01\x00\x80\x00\x00\x00\x00\x00'
             b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
@@ -41,7 +42,7 @@ class PostCreateFormTests(TestCase):
             b'\x02\x00\x01\x00\x00\x02\x02\x0C'
             b'\x0A\x00\x3B'
         )
-        cls.small_gif_2 = (
+        cls.SMALL_GIF_2 = (
             b'\x47\x49\x46\x38\x39\x61\x02\x00'
             b'\x01\x00\x80\x00\x00\x00\x00\x00'
             b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
@@ -51,12 +52,12 @@ class PostCreateFormTests(TestCase):
         )
         cls.uploaded_1 = SimpleUploadedFile(
             name='small_1.gif',
-            content=cls.small_gif_1,
+            content=cls.SMALL_GIF_1,
             content_type='image/gif',
         )
         cls.uploaded_2 = SimpleUploadedFile(
             name='small_2.gif',
-            content=cls.small_gif_2,
+            content=cls.SMALL_GIF_2,
             content_type='image/gif',
         )
         cls.post = Post.objects.create(
@@ -67,17 +68,23 @@ class PostCreateFormTests(TestCase):
         cls.form = CommentForm
         cls.APP_NAME = 'posts/'
 
-        cls.REVERSES_WAY_CREATE_POST = reverse(
+        cls.CREATE_POST_URL = reverse(
             'posts:create_post')
-        cls.REVERSES_WAY_PROFILE = reverse(
+        cls.PROFILE_REVERSE = reverse(
             "posts:profile", args=(cls.post.author.username,))
-        cls.REVERSES_WAY_POST_DETAIL = reverse(
+        cls.POST_DETAIL_REVERSE = reverse(
             'posts:post_detail', args=(cls.post.id,))
-        cls.REVERSES_WAY_EDIT = reverse(
+        cls.POST_EDIT_REVERSE = reverse(
             "posts:edit", args=(cls.post.id,))
-        cls.REDIRECTS_URL = f'/auth/login/?next=/posts/{cls.post.id}/edit/'
-        cls.ADD_COMMENT = f'/posts/{cls.post.id}/comment/'
-        cls.LOGIN = f'/auth/login/?next=/posts/{cls.post.id}/comment/'
+        cls.REDIRECTS_REVERSE = f'/auth/login/?next=/posts/{cls.post.id}/edit/'
+        cls.ADD_COMMENT_REVERSE = f'/posts/{cls.post.id}/comment/'
+        cls.LOGIN_REVERSE = f'/auth/login/?next=/posts/{cls.post.id}/comment/'
+
+        cls.guest_client = Client()
+        cls.authorized_client = Client()
+        cls.authorized_client.force_login(cls.user)
+        cls.authorized_client_comm = Client()
+        cls.authorized_client_comm.force_login(cls.comment_author)
 
     @classmethod
     def tearDownClass(cls):
@@ -85,11 +92,7 @@ class PostCreateFormTests(TestCase):
         shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
     def setUp(self):
-        self.guest_client = Client()
-        self.authorized_client = Client()
-        self.authorized_client.force_login(self.user)
-        self.authorized_client_comm = Client()
-        self.authorized_client_comm.force_login(self.comment_author)
+        cache.clear()
 
     def test_create_post(self):
         """Проверка создания поста"""
@@ -99,10 +102,10 @@ class PostCreateFormTests(TestCase):
             'group': self.group.id,
             'image': self.uploaded_1,
         }
-        response = self.authorized_client.post(self.REVERSES_WAY_CREATE_POST,
+        response = self.authorized_client.post(self.CREATE_POST_URL,
                                                data=form_data,
                                                follow=True)
-        self.assertRedirects(response, self.REVERSES_WAY_PROFILE)
+        self.assertRedirects(response, self.PROFILE_REVERSE)
         self.assertEqual(response.status_code, HTTPStatus.OK)
 
         latest_post = Post.objects.latest('id')
@@ -119,6 +122,38 @@ class PostCreateFormTests(TestCase):
         count_posts = set(Post.objects.all()) - initial_posts
         self.assertEqual(len(count_posts), 1)
 
+    def test_post_create_page_show_correct_context(self):
+        """Шаблон post_create сформирован с правильным контекстом."""
+        response = self.authorized_client.get(self.CREATE_POST_URL)
+        form_fields = {
+            'text': forms.fields.CharField,
+            'group': forms.fields.ChoiceField,
+            'image': forms.fields.ImageField,
+        }
+        for value, expected in form_fields.items():
+            with self.subTest(value=value):
+                form_field = response.context.get('form').fields.get(value)
+                self.assertIsInstance(form_field, expected)
+
+    def test_forms_show_correct_info(self):
+        """Проверка коректности формы поста."""
+        fields = {
+            reverse('posts:create_post'),
+            reverse('posts:edit', args=(self.post.id,)),
+        }
+        for reverse_page in fields:
+            with self.subTest(reverse_page=reverse_page):
+                response = self.authorized_client.get(reverse_page)
+                self.assertIsInstance(
+                    response.context['form'].fields['text'],
+                    forms.fields.CharField)
+                self.assertIsInstance(
+                    response.context['form'].fields['group'],
+                    forms.fields.ChoiceField)
+                self.assertIsInstance(
+                    response.context['form'].fields['image'],
+                    forms.fields.ImageField)
+
     def test_post_edit(self):
         """Валидная форма изменяет запись в Post."""
         form_data = {
@@ -127,11 +162,11 @@ class PostCreateFormTests(TestCase):
             "image": self.uploaded_2,
         }
         response = self.authorized_client.post(
-            self.REVERSES_WAY_EDIT,
+            self.POST_EDIT_REVERSE,
             data=form_data,
             follow=True,
         )
-        self.assertRedirects(response, self.REVERSES_WAY_POST_DETAIL)
+        self.assertRedirects(response, self.POST_DETAIL_REVERSE)
 
         edit_post = Post.objects.get(id=self.post.id)
         assert_fields = {
@@ -152,11 +187,11 @@ class PostCreateFormTests(TestCase):
             "group": self.group.id
         }
         response = self.guest_client.post(
-            self.REVERSES_WAY_EDIT,
+            self.POST_EDIT_REVERSE,
             data=form_data,
             follow=True)
         self.assertEqual(response.status_code, HTTPStatus.OK)
-        self.assertRedirects(response, self.REDIRECTS_URL)
+        self.assertRedirects(response, self.REDIRECTS_REVERSE)
 
     def test_group_null(self):
         '''Проверка что группу можно не указывать'''
@@ -165,7 +200,7 @@ class PostCreateFormTests(TestCase):
             'group': ' ',
         }
         response = self.authorized_client.post(
-            self.REVERSES_WAY_EDIT,
+            self.POST_EDIT_REVERSE,
             data=form_data,
             follow=True)
         self.assertEqual(response.status_code, HTTPStatus.OK)
@@ -181,7 +216,7 @@ class PostCreateFormTests(TestCase):
             "text": "Текст комментария",
         }
         response = self.authorized_client_comm.post(
-            self.ADD_COMMENT,
+            self.ADD_COMMENT_REVERSE,
             data=form_data,
             follow=True,
         )
@@ -196,7 +231,7 @@ class PostCreateFormTests(TestCase):
             with self.subTest(key=key):
                 self.assertEqual(key, value)
         self.assertRedirects(
-            response, self.REVERSES_WAY_POST_DETAIL)
+            response, self.POST_DETAIL_REVERSE)
         count_comment = set(Comment.objects.all()) - initial_comment
         self.assertEqual(len(count_comment), 1)
 
@@ -209,10 +244,10 @@ class PostCreateFormTests(TestCase):
             "text": "Текст комментария",
         }
         response = self.guest_client.post(
-            self.ADD_COMMENT,
+            self.ADD_COMMENT_REVERSE,
             data=form_data,
             follow=True,
         )
         self.assertEqual(response.status_code, HTTPStatus.OK)
         self.assertRedirects(
-            response, self.LOGIN)
+            response, self.LOGIN_REVERSE)

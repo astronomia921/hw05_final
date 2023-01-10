@@ -52,8 +52,6 @@ INSTALLED_APPS = [
     'users.apps.UsersConfig',
 ]
 
-PAGINATOR_PAGE_NUMBER = 10
-
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',

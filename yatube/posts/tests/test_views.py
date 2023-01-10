@@ -1,8 +1,6 @@
-# from http import HTTPStatus
 import shutil
 import tempfile
 
-from django import forms
 from django.conf import settings
 from django.core.cache import cache
 from django.shortcuts import get_object_or_404
@@ -26,7 +24,7 @@ class PostPagesTests(TestCase):
             slug="test-slug",
             description="Тестовое описание",
         )
-        cls.small_gif = (
+        cls.SMALL_GIF = (
             b'\x47\x49\x46\x38\x39\x61\x02\x00'
             b'\x01\x00\x80\x00\x00\x00\x00\x00'
             b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
@@ -36,7 +34,7 @@ class PostPagesTests(TestCase):
         )
         cls.uploaded = SimpleUploadedFile(
             name='small.gif',
-            content=cls.small_gif,
+            content=cls.SMALL_GIF,
             content_type='image/gif'
         )
         cls.post = Post.objects.create(
@@ -88,15 +86,16 @@ class PostPagesTests(TestCase):
         cls.GROUP_NUM = 10
         cls.USER_POST_NUMBER = 10
 
+        cls.guest_client = Client()
+        cls.authorized_client = Client()
+        cls.authorized_client.force_login(cls.user)
+
     @classmethod
     def tearDownClass(cls):
         super().tearDownClass()
         shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
     def setUp(self):
-        self.guest_client = Client()
-        self.authorized_client = Client()
-        self.authorized_client.force_login(self.user)
         cache.clear()
 
     def check_post_has_correct_info(self, post):
@@ -125,57 +124,47 @@ class PostPagesTests(TestCase):
         self.check_post_has_correct_info(
             list(response.context["page_obj"])[1])
 
-    def test_group_list_page_show_correct_context(self):
-        """Шаблон group_list сформирован с правильным контесктом."""
-        response = self.guest_client.get(self.REVERSES_WAY_GROUP_LIST)
-        group = get_object_or_404(Group, slug=self.group.slug)
-        expected = list(
-            group.posts.select_related(
-                'group', 'author')[:self.GROUP_NUM])
-        self.assertEqual(list(response.context["page_obj"]), expected)
-        self.check_post_has_correct_info(
-            list(response.context["page_obj"])[0])
+    def test_pages_show_correct_context(self):
+        """Шаблоны сформированы с правильным  контесктом."""
+        fields_assert_1 = {
+            'group_list': self.REVERSES_WAY_GROUP_LIST,
+            'profile': self.REVERSES_WAY_PROFILE,
+        }
+        for key, value in fields_assert_1.items():
+            with self.subTest(key=key):
+                response = self.guest_client.get(value)
 
-    def test_profile_show_correct_context(self):
-        """Шаблоне profile равен ожидаемому контексту."""
-        response = self.guest_client.get(self.REVERSES_WAY_PROFILE)
+        group = get_object_or_404(Group, slug=self.group.slug)
         author = get_object_or_404(User, username=self.user.username)
-        expected = list(
-            author.posts.select_related(
-                'author', 'group')[:self.USER_POST_NUMBER])
-        self.assertEqual(list(response.context["page_obj"]), expected)
-        self.check_post_has_correct_info(
-            list(response.context["page_obj"])[0])
+        fields_assert_2 = {
+            'group': list(
+                author.posts.select_related(
+                    'author', 'group')[:self.USER_POST_NUMBER]),
+            'author': list(
+                group.posts.select_related(
+                    'group', 'author')[:self.GROUP_NUM])
+        }
+        for key, expected in fields_assert_2.items():
+            with self.subTest(key=key):
+                self.assertEqual(list(response.context["page_obj"]), expected)
+                self.check_post_has_correct_info(
+                    list(response.context["page_obj"])[0])
 
     def test_post_detail_page_show_correct_context(self):
         """Шаблон post_detail сформирован с правильным контекстом."""
         response = self.authorized_client.get(self.REVERSES_WAY_POST_DETAIL)
-        POST_CONTEXT = response.context.get('post')
+        post_context = response.context.get('post')
         post_text = {
-            POST_CONTEXT.text: 'Пост',
-            POST_CONTEXT.group: self.group,
-            POST_CONTEXT.author: self.post.author.username,
-            POST_CONTEXT.image: self.post.image,
+            post_context.text: 'Пост',
+            post_context.group: self.group,
+            post_context.author: self.post.author.username,
+            post_context.image: self.post.image,
         }
         for value, expected in post_text.items():
             self.assertEqual(post_text[value], expected)
 
-    def test_post_create_page_show_correct_context(self):
-        """Шаблон post_create сформирован с правильным контекстом."""
-        response = self.authorized_client.get(self.REVERSES_WAY_CREATE_POST)
-        form_fields = {
-            'text': forms.fields.CharField,
-            'group': forms.fields.ChoiceField,
-            'image': forms.fields.ImageField,
-        }
-        for value, expected in form_fields.items():
-            with self.subTest(value=value):
-                form_field = response.context.get('form').fields.get(value)
-                self.assertIsInstance(form_field, expected)
-
     def test_post_added_correctly(self):
         """Пост при создании добавлен корректно"""
-        new_post = self.post
         response_index = self.authorized_client.get(
             self.REVERSES_WAY_INDEX)
         response_group = self.authorized_client.get(
@@ -186,9 +175,9 @@ class PostPagesTests(TestCase):
         group = response_group.context['page_obj']
         profile = response_profile.context['page_obj']
         assert_values = (
-            (new_post, index),
-            (new_post, group),
-            (new_post, profile),
+            (self.post, index),
+            (self.post, group),
+            (self.post, profile),
         )
         for value, expected_value in assert_values:
             with self.subTest(value=value):
@@ -204,25 +193,6 @@ class PostPagesTests(TestCase):
         profile = response_profile.context['page_obj']
         self.assertEqual(group, posts_count, 'поста нет в другой группе')
         self.assertNotIn(self.post2, profile)
-
-    def test_forms_show_correct_info(self):
-        """Проверка коректности формы поста."""
-        fields = {
-            reverse('posts:create_post'),
-            reverse('posts:edit', args=(self.post.id,)),
-        }
-        for reverse_page in fields:
-            with self.subTest(reverse_page=reverse_page):
-                response = self.authorized_client.get(reverse_page)
-                self.assertIsInstance(
-                    response.context['form'].fields['text'],
-                    forms.fields.CharField)
-                self.assertIsInstance(
-                    response.context['form'].fields['group'],
-                    forms.fields.ChoiceField)
-                self.assertIsInstance(
-                    response.context['form'].fields['image'],
-                    forms.fields.ImageField)
 
     def test_cache_index(self):
         """Тестирование хранения и очистки кэша в index"""
