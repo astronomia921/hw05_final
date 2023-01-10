@@ -8,7 +8,7 @@
     {% endblock %}
   </h1>
     {% if user.is_authenticated %}
-      {% include 'includes/switcher.html' %}
+      {% include 'includes/switcher.html'  with index=True follow=False%}
     {% endif %}
     {% for post in page_obj %}
       {% include 'includes/index_card.html' %}
