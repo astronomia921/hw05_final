@@ -1,5 +1,3 @@
-# from collections import ChainMap
-
 from http import HTTPStatus
 
 from django.core.cache import cache
@@ -23,19 +21,48 @@ class PostURLTests(TestCase):
             author=cls.user,
             text="Пост",
         )
-        cls.TEMPALTES_URL = {
-            '/': 'posts/index.html',
-            f'/group/{cls.group.slug}/': 'posts/group_list.html',
-            f'/profile/{cls.user.username}/': 'posts/profile.html',
-            f'/posts/{cls.post.id}/': 'posts/post_detail.html',
-            '/create/': 'posts/create_post.html',
-            f'/posts/{cls.post.id}/edit/': 'posts/create_post.html',
+        cls.FIELDS_URLS_STATUS_CODE = {
+            reverse(
+                'posts:index'): HTTPStatus.OK,
+            reverse(
+                'posts:group_list',
+                args=(cls.group.slug,)): HTTPStatus.OK,
+            reverse(
+                'posts:profile',
+                args=(cls.user.username,)): HTTPStatus.OK,
+            reverse(
+                'posts:post_detail',
+                args=(cls.post.id,)): HTTPStatus.OK,
+            reverse(
+                'posts:edit',
+                args=(cls.post.id,)): HTTPStatus.OK,
+            reverse(
+                'posts:create_post'): HTTPStatus.OK,
+            '/unexisting_page/': HTTPStatus.NOT_FOUND,
         }
         cls.REDIRECTS_URL = f"/auth/login/?next=/posts/{cls.post.id}/edit/"
         cls.REDIRECTS_POST_CREATE_URL = "/auth/login/?next=/create/"
         cls.POST_EDIT_URL = f"/posts/{cls.post.id}/edit/"
         cls.CREATE_URL = "/create/"
         cls.NO_FOUND_URL = "/unexisting_page/"
+
+        cls.INDEX_URL = '/'
+        cls.FOLLOW_URL = '/follow/'
+        cls.GROUP_LIST_URL = f'/group/{cls.group.slug}/'
+        cls.PROFILE_URL = f'/profile/{cls.user.username}/'
+        cls.POST_DETAIL_URL = f'/posts/{cls.post.id}/'
+        cls.CREATE_POST_URL = '/create/'
+        cls.POST_EDIT_URL = f'/posts/{cls.post.id}/edit/'
+
+        cls.TEMPALTES_URL = {
+            cls.INDEX_URL: 'posts/index.html',
+            cls.FOLLOW_URL: 'posts/follow.html',
+            cls.GROUP_LIST_URL: 'posts/group_list.html',
+            cls.PROFILE_URL: 'posts/profile.html',
+            cls.POST_DETAIL_URL: 'posts/post_detail.html',
+            cls.CREATE_POST_URL: 'posts/create_post.html',
+            cls.POST_EDIT_URL: 'posts/create_post.html',
+        }
 
         cls.guest_client = Client()
         cls.authorized_client = Client()
@@ -65,30 +92,9 @@ class PostURLTests(TestCase):
             with self.subTest(key=key):
                 self.assertRedirects(response, key)
 
-    def test_http(self):
+    def test_http_status_code(self):
         """Проверка кодов возврата на всех существующих адресах."""
-        # хотел через ChainMap, понимаю, что он делает
-        # но не до конца понимаю как именно в этом случае сделать
-        field_urls_code = {
-            reverse(
-                'posts:index'): HTTPStatus.OK,
-            reverse(
-                'posts:group_list',
-                args=(self.group.slug,)): HTTPStatus.OK,
-            reverse(
-                'posts:profile',
-                args=(self.user.username,)): HTTPStatus.OK,
-            reverse(
-                'posts:post_detail',
-                args=(self.post.id,)): HTTPStatus.OK,
-            reverse(
-                'posts:edit',
-                args=(self.post.id,)): HTTPStatus.OK,
-            reverse(
-                'posts:create_post'): HTTPStatus.OK,
-            '/unexisting_page/': HTTPStatus.NOT_FOUND,
-        }
-        for url, http in field_urls_code.items():
+        for url, http_status_code in self.FIELDS_URLS_STATUS_CODE.items():
             with self.subTest(url=url):
                 response = self.authorized_client.get(url)
-                self.assertEqual(response.status_code, http)
+                self.assertEqual(response.status_code, http_status_code)

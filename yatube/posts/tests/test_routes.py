@@ -1,5 +1,6 @@
 from django.core.cache import cache
 from django.test import Client, TestCase
+from django.urls import reverse
 
 from ..models import Group, Post, User
 
@@ -18,6 +19,26 @@ class URLTests(TestCase):
             author=cls.user,
             text="Пост",
         )
+        cls.TEMPLATES_REVERSE = {
+            reverse(
+                'posts:index'): 'posts/index.html',
+            reverse(
+                'posts:follow_index'): 'posts/follow.html',
+            reverse(
+                'posts:group_list',
+                args=(cls.group.slug,)): 'posts/group_list.html',
+            reverse(
+                'posts:profile',
+                args=(cls.user.username,)): 'posts/profile.html',
+            reverse(
+                'posts:post_detail',
+                args=(cls.post.id,)): 'posts/post_detail.html',
+            reverse(
+                'posts:create_post'): 'posts/create_post.html',
+            reverse(
+                'posts:edit',
+                args=(cls.post.id,)): 'posts/create_post.html',
+        }
         cls.guest_client = Client()
         cls.authorized_client = Client()
         cls.authorized_client.force_login(cls.user)
@@ -26,17 +47,8 @@ class URLTests(TestCase):
         cache.clear()
 
     def test_url(self):
-        """Расчёты дают ожидаемые явные URL-ы"""
-        templates_url = {
-            '/': 'posts/index.html',
-            '/follow/': 'posts/follow.html',
-            f'/group/{self.group.slug}/': 'posts/group_list.html',
-            f'/profile/{self.user.username}/': 'posts/profile.html',
-            f'/posts/{self.post.id}/': 'posts/post_detail.html',
-            '/create/': 'posts/create_post.html',
-            f'/posts/{self.post.id}/edit/': 'posts/create_post.html',
-        }
-        for path, url in templates_url.items():
-            with self.subTest(path=path):
-                response = self.authorized_client.get(path)
+        """Реверсы дают ожидаемые URLы"""
+        for reverse_path, url in self.TEMPLATES_REVERSE.items():
+            with self.subTest(reverse_path=reverse_path):
+                response = self.authorized_client.get(reverse_path)
                 self.assertTemplateUsed(response, url)
