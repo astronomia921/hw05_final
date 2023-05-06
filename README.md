@@ -1,3 +1,60 @@
-# hw05_final
+# Описание проекта
 
-[![CI](https://github.com/yandex-praktikum/hw05_final/actions/workflows/python-app.yml/badge.svg?branch=master)](https://github.com/yandex-praktikum/hw05_final/actions/workflows/python-app.yml)
+Данный проект представляет собой сайт-блог, созданный на Django. Сайт позволяет пользователям создавать свои аккаунты, писать статьи, комментировать их, подписываться на других пользователей и многое другое.
+
+# Функциональность сайта
+
+На сайте реализованы следующие функции:
+
+* Регистрация и авторизация пользователей
+* Создание, редактирование и удаление статей
+* Комментирование статей других пользователей
+* Подписка на других пользователей
+* Личный кабинет пользователя со списком его статей и подписок
+* Поиск статей по ключевым словам
+
+# Установка и запуск проекта
+
+1. Склонируйте репозиторий на свой компьютер:
+
+
+git clone https://github.com/black-water715/hw05_final.git
+
+
+2. Установите зависимости:
+
+
+pip install -r requirements.txt
+
+
+3. Создайте базу данных:
+
+
+python manage.py migrate
+
+
+4. Создайте суперпользователя:
+
+
+python manage.py createsuperuser
+
+
+5. Запустите сервер:
+
+
+python manage.py runserver
+
+
+6. Перейдите по адресу http://127.0.0.1:8000/ в вашем браузере.
+
+# Используемые технологии
+
+* Python
+* Django
+* HTML/CSS
+* Bootstrap
+* SQLite
+
+# Автор
+
+* **black-water715** - [GitHub](https://github.com/black-water715)
